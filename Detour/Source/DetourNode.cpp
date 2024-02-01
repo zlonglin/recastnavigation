@@ -24,6 +24,7 @@
 
 #ifdef DT_POLYREF64
 // From Thomas Wang, https://gist.github.com/badboy/6267743
+// 开源库版本
 inline unsigned int dtHashRef(dtPolyRef a)
 {
 	a = (~a) + (a << 18); // a = (a << 18) - a - 1;
@@ -34,6 +35,17 @@ inline unsigned int dtHashRef(dtPolyRef a)
 	a = a ^ (a >> 22);
 	return (unsigned int)a;
 }
+// UE版本
+//inline unsigned int dtHashRef(dtPolyRef a)
+//{
+//	a += ~(a << 31);
+//	a ^= (a >> 20);
+//	a += (a << 6);
+//	a ^= (a >> 12);
+//	a += ~(a << 22);
+//	a ^= (a >> 32);
+//	return (unsigned int)a;
+//}
 #else
 inline unsigned int dtHashRef(dtPolyRef a)
 {
