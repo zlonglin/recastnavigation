@@ -21,6 +21,9 @@
 
 #include "DetourAlloc.h"
 #include "DetourStatus.h"
+#ifdef DEBUG
+#include <memory>
+#endif // DEBUG
 
 // Undefine (or define in a build config) the following line to use 64bit polyref.
 // Generally not needed, useful for very large worlds.
@@ -309,6 +312,26 @@ struct dtMeshTile
 private:
 	dtMeshTile(const dtMeshTile&);
 	dtMeshTile& operator=(const dtMeshTile&);
+
+#ifdef _DEBUG
+public:
+	bool	operator ==(const dtMeshTile& other) const
+	{
+		if (dataSize != other.dataSize)
+			return false;
+		if (0 != memcmp(header, other.header, sizeof(dtMeshHeader)))
+			return false;
+
+		if (0 != memcmp(verts, other.verts, sizeof(float)*3*header->vertCount))
+			return false;
+
+		return true;
+	}
+	bool	operator !=(const dtMeshTile& other) const
+	{
+		return !(*this == other);
+	}
+#endif
 };
 
 /// Get flags for edge in detail triangle.

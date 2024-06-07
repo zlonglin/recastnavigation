@@ -2102,6 +2102,96 @@ dtStatus dtMarkBoxArea(dtTileCacheLayer& layer, const float* orig, const float c
 	return DT_SUCCESS;
 }
 
+dtStatus dtMarkBoxAreaOCT(dtTileCacheLayer& layer, const float* orig, const float cs, const float ch,
+					   const float* bmin, const float* bmax, const unsigned char areaId)
+{
+	const int w = (int)layer.header->width;
+	const int h = (int)layer.header->height;
+	const float ics = 1.0f / cs;
+	const float ich = 1.0f / ch;
+
+	int minx = (int)floorf((bmin[0] - orig[0]) * ics);
+	int miny = (int)floorf((bmin[1] - orig[1]) * ich);
+	int minz = (int)floorf((bmin[2] - orig[2]) * ics);
+	int maxx = (int)floorf((bmax[0] - orig[0]) * ics);
+	int maxy = (int)floorf((bmax[1] - orig[1]) * ich);
+	int maxz = (int)floorf((bmax[2] - orig[2]) * ics);
+
+	int a[3] = { minx, miny, minz };
+	int c[3] = { maxx, maxy, maxz };
+
+	int dx = (c[0] - a[0]);
+	int dz = (c[2] - a[2]);
+	int th = (dz - dx) / 2;
+	int b[3] = { a[0] - th, 0, a[2] + th };
+	int d[3] = { c[0] + th, 0, c[2] - th };
+	int tw = 2 * dtMin(d[0] - a[0], a[0] - b[0]);
+
+	// minx,maxx分别取旋转后的矩形左右边界
+	minx = a[0] - th;
+	maxx = c[0] + th;
+
+	// 完全超出范围，不生成
+	if (maxx < 0) return DT_SUCCESS;
+	if (minx >= w) return DT_SUCCESS;
+	if (maxz < 0) return DT_SUCCESS;
+	if (minz >= h) return DT_SUCCESS;
+
+	if (minx < 0) minx = 0;
+	if (maxx >= w) maxx = w - 1;
+	if (minz < 0) minz = 0;
+	if (maxz >= h) maxz = h - 1;
+
+	int s1 = dtMin(dtMin(b[2], d[2]), maxz);
+	int s2 = dtMin(dtMax(b[2], d[2]), maxz);
+
+	for (int z= minz; z <= s1; ++z)
+	{
+		int offset = z - a[2];
+		int endx = dtMin(a[0] + offset, maxx);
+		for (int x = dtMax(a[0] - offset, minx); x <= endx; ++x)
+		{
+// 			if (x < minx || x > maxx)
+// 				continue;
+			const int y = layer.heights[x + z * w];
+			if (y < miny || y > maxy)
+				continue;
+			layer.areas[x + z * w] = areaId;
+		}
+	}
+	for (int z = dtMax(s1+1, minz); z <= s2; ++z)
+	{
+		int offset = tw / 2;
+		if (b[2] < d[2])
+			offset -= (z - s1);
+		else
+			offset += (z - s1);
+		int start = a[0] - offset;
+		int endx = dtMin(start + tw, maxx);
+		for (int x=dtMax(start, minx); x <= endx; ++x)
+		{
+			const int y = layer.heights[x + z * w];
+			if (y < miny || y > maxy)
+				continue;
+			layer.areas[x + z * w] = areaId;
+		}
+	}
+	for (int z = dtMax(s2+1, minz); z <= maxz; ++z)
+	{
+		int offset = c[2] - z;
+		int endx = dtMin(c[0] + offset, maxx);
+		for (int x = dtMax(c[0] - offset, minx); x <= endx; ++x)
+		{
+			const int y = layer.heights[x + z * w];
+			if (y < miny || y > maxy)
+				continue;
+			layer.areas[x + z * w] = areaId;
+		}
+	}
+
+	return DT_SUCCESS;
+}
+
 dtStatus dtBuildTileCacheLayer(dtTileCacheCompressor* comp,
 							   dtTileCacheLayerHeader* header,
 							   const unsigned char* heights,

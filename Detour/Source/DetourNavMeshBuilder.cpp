@@ -173,6 +173,7 @@ static int createBVTree(dtNavMeshCreateParams* params, dtBVNode* nodes, int /*nn
 	// Build tree
 	float quantFactor = 1 / params->cs;
 	BVItem* items = (BVItem*)dtAlloc(sizeof(BVItem)*params->polyCount, DT_ALLOC_TEMP);
+	if (!items) return -1;
 	for (int i = 0; i < params->polyCount; i++)
 	{
 		BVItem& it = items[i];
@@ -624,7 +625,12 @@ bool dtCreateNavMeshData(dtNavMeshCreateParams* params, unsigned char** outData,
 	// Store and create BVtree.
 	if (params->buildBvTree)
 	{
-		createBVTree(params, navBvtree, 2*params->polyCount);
+		if (-1 == createBVTree(params, navBvtree, 2 * params->polyCount))
+		{
+			dtFree(data);
+			dtFree(offMeshConClass);
+			return false;
+		}
 	}
 	
 	// Store Off-Mesh connections.

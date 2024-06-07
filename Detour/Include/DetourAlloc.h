@@ -36,6 +36,8 @@ enum dtAllocHint
 ///  @see dtAllocSetCustom
 typedef void* (dtAllocFunc)(size_t size, dtAllocHint hint);
 
+typedef void* (dtReAllocFunc)(void* ptr, size_t size, dtAllocHint hint);
+
 /// A memory deallocation function.
 ///  @param[in]		ptr		A pointer to a memory block previously allocated using #dtAllocFunc.
 /// @see dtAllocSetCustom
@@ -44,7 +46,7 @@ typedef void (dtFreeFunc)(void* ptr);
 /// Sets the base custom allocation functions to be used by Detour.
 ///  @param[in]		allocFunc	The memory allocation function to be used by #dtAlloc
 ///  @param[in]		freeFunc	The memory de-allocation function to be used by #dtFree
-void dtAllocSetCustom(dtAllocFunc *allocFunc, dtFreeFunc *freeFunc);
+void dtAllocSetCustom(dtAllocFunc *allocFunc, dtFreeFunc *freeFunc, dtReAllocFunc *reallocFunc);
 
 /// Allocates a memory block.
 ///  @param[in]		size	The size, in bytes of memory, to allocate.
@@ -52,6 +54,10 @@ void dtAllocSetCustom(dtAllocFunc *allocFunc, dtFreeFunc *freeFunc);
 ///  @return A pointer to the beginning of the allocated memory block, or null if the allocation failed.
 /// @see dtFree
 void* dtAlloc(size_t size, dtAllocHint hint);
+
+
+void* dtReAlloc(void* ptr, size_t size, dtAllocHint hint);
+
 
 /// Deallocates a memory block.
 ///  @param[in]		ptr		A pointer to a memory block previously allocated using #dtAlloc.

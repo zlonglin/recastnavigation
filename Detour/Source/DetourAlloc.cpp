@@ -24,24 +24,37 @@ static void *dtAllocDefault(size_t size, dtAllocHint)
 	return malloc(size);
 }
 
+static void* dtReAllocDefault(void *ptr, size_t size, dtAllocHint)
+{
+	return realloc(ptr, size);
+}
+
 static void dtFreeDefault(void *ptr)
 {
 	free(ptr);
 }
 
 static dtAllocFunc* sAllocFunc = dtAllocDefault;
+static dtReAllocFunc* sReAllocFunc = dtReAllocDefault;
 static dtFreeFunc* sFreeFunc = dtFreeDefault;
 
-void dtAllocSetCustom(dtAllocFunc *allocFunc, dtFreeFunc *freeFunc)
+void dtAllocSetCustom(dtAllocFunc *allocFunc, dtFreeFunc *freeFunc, dtReAllocFunc *reallocFunc)
 {
 	sAllocFunc = allocFunc ? allocFunc : dtAllocDefault;
 	sFreeFunc = freeFunc ? freeFunc : dtFreeDefault;
+	sReAllocFunc = reallocFunc ? reallocFunc : dtReAllocDefault;
 }
 
 void* dtAlloc(size_t size, dtAllocHint hint)
 {
 	return sAllocFunc(size, hint);
 }
+
+void* dtReAlloc(void* ptr, size_t size, dtAllocHint hint)
+{
+	return sReAllocFunc(ptr, size, hint);
+}
+
 
 void dtFree(void* ptr)
 {

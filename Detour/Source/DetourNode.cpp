@@ -118,7 +118,7 @@ dtNode* dtNodePool::findNode(dtPolyRef id, unsigned char state)
 	return 0;
 }
 
-dtNode* dtNodePool::getNode(dtPolyRef id, unsigned char state)
+dtNode* dtNodePool::getNode(dtPolyRef id, unsigned char state, unsigned char dir)
 {
 	unsigned int bucket = dtHashRef(id) & (m_hashSize-1);
 	dtNodeIndex i = m_first[bucket];
@@ -144,6 +144,7 @@ dtNode* dtNodePool::getNode(dtPolyRef id, unsigned char state)
 	node->id = id;
 	node->state = state;
 	node->flags = 0;
+	node->dir = dir;
 	
 	m_next[i] = m_first[bucket];
 	m_first[bucket] = i;
@@ -173,7 +174,7 @@ void dtNodeQueue::bubbleUp(int i, dtNode* node)
 {
 	int parent = (i-1)/2;
 	// note: (index > 0) means there is a parent
-	while ((i > 0) && (m_heap[parent]->total > node->total))
+	while ((i > 0) && (*m_heap[parent] > *node))
 	{
 		m_heap[i] = m_heap[parent];
 		i = parent;
@@ -188,7 +189,7 @@ void dtNodeQueue::trickleDown(int i, dtNode* node)
 	while (child < m_size)
 	{
 		if (((child+1) < m_size) && 
-			(m_heap[child]->total > m_heap[child+1]->total))
+			(*m_heap[child] > *m_heap[child+1]))
 		{
 			child++;
 		}

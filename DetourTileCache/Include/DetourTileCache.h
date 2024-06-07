@@ -2,6 +2,7 @@
 #define DETOURTILECACHE_H
 
 #include "DetourStatus.h"
+#include <memory>
 
 typedef unsigned int dtObstacleRef;
 typedef unsigned int dtCompressedTileRef;
@@ -36,7 +37,8 @@ enum ObstacleType
 {
 	DT_OBSTACLE_CYLINDER,
 	DT_OBSTACLE_BOX, // AABB
-	DT_OBSTACLE_ORIENTED_BOX // OBB
+	DT_OBSTACLE_ORIENTED_BOX, // OBB
+	DT_OBSTACLE_OCT_BOX,	// 正八方向旋转的AABB盒子
 };
 
 struct dtObstacleCylinder
@@ -92,6 +94,16 @@ struct dtTileCacheParams
 	int maxObstacles;
 };
 
+struct dtTileXYLayer
+{
+	int x;
+	int y;
+	int layer;
+	dtTileXYLayer() {
+		memset(this, 0, sizeof(dtTileXYLayer));
+	}
+};
+
 struct dtTileCacheMeshProcess
 {
 	virtual ~dtTileCacheMeshProcess();
@@ -117,6 +129,8 @@ public:
 	const dtTileCacheObstacle* getObstacleByRef(dtObstacleRef ref);
 	
 	dtObstacleRef getObstacleRef(const dtTileCacheObstacle* obmin) const;
+
+	dtStatus incObstacles();
 	
 	dtStatus init(const dtTileCacheParams* params,
 				  struct dtTileCacheAlloc* talloc,
@@ -139,6 +153,8 @@ public:
 	// Aabb obstacle.
 	dtStatus addBoxObstacle(const float* bmin, const float* bmax, dtObstacleRef* result);
 
+	dtStatus addBoxObstacleOCT(const float* bmin, const float* bmax, dtObstacleRef* result);
+
 	// Box obstacle: can be rotated in Y.
 	dtStatus addBoxObstacle(const float* center, const float* halfExtents, const float yRadians, dtObstacleRef* result);
 	
@@ -153,11 +169,11 @@ public:
 	///  @param[out]	upToDate	Whether the tile cache is fully up to date with obstacle requests and tile rebuilds.
 	///  							If the tile cache is up to date another (immediate) call to update will have no effect;
 	///  							otherwise another call will continue processing obstacle requests and tile rebuilds.
-	dtStatus update(const float dt, class dtNavMesh* navmesh, bool* upToDate = 0);
+	dtStatus update(const float dt, class dtNavMesh* navmesh, bool* upToDate = 0, dtTileXYLayer* xylayer = 0);
 	
 	dtStatus buildNavMeshTilesAt(const int tx, const int ty, class dtNavMesh* navmesh);
 	
-	dtStatus buildNavMeshTile(const dtCompressedTileRef ref, class dtNavMesh* navmesh);
+	dtStatus buildNavMeshTile(const dtCompressedTileRef ref, class dtNavMesh* navmesh, dtTileXYLayer* xylayer = 0);
 	
 	void calcTightTileBounds(const struct dtTileCacheLayerHeader* header, float* bmin, float* bmax) const;
 	

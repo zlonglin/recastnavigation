@@ -223,6 +223,14 @@ dtStatus dtNavMeshQuery::init(const dtNavMesh* nav, const int maxNodes)
 	return DT_SUCCESS;
 }
 
+dtStatus dtNavMeshQuery::changeNavMesh(const dtNavMesh* nav)
+{
+	if (!nav)
+		return DT_FAILURE | DT_INVALID_PARAM;
+	m_nav = nav;
+	return DT_SUCCESS;
+}
+
 dtStatus dtNavMeshQuery::findRandomPoint(const dtQueryFilter* filter, float (*frand)(),
 										 dtPolyRef* randomRef, float* randomPt) const
 {
@@ -958,6 +966,211 @@ dtStatus dtNavMeshQuery::queryPolygons(const float* center, const float* halfExt
 	
 	return DT_SUCCESS;
 }
+
+//@ND BEGIN
+inline float getEscapeD(const float* endPos, const float* curPos)
+{
+	return dtVdist(curPos, endPos)* H_SCALE;
+}
+
+inline float dtNavMeshQuery::getEscapeV(const float* startPos, const float* endPos, const float* curPos)
+{
+	float v2[3];
+	dtVsub(v2, curPos, startPos);
+//	dtVnormalize(norm_v2);
+	float dot = dtVdot(m_vES, v2);
+
+	return dot;
+}
+
+inline float dtNavMeshQuery::getEscapeH(const float* startPos, const float* endPos, const float* curPos, float cost, float escapeDist)
+{
+	//float HA = 0.2f, HB = 0.8f;
+	float HA = cost / escapeDist * 0.3f;
+	float HB = 1.0f - HA;
+	float h = HA * getEscapeD(endPos, curPos) + HB * getEscapeV(startPos, endPos, curPos);
+	return h;
+}
+
+dtStatus dtNavMeshQuery::findPathEscape(dtPolyRef startRef, /*dtPolyRef endRef,*/
+	const float* startPos, const float* endPos, const float escapeDist,
+	const dtQueryFilter* filter,
+	dtPolyRef* path, int* pathCount, float* epos, const int maxPath)
+{
+	dtAssert(m_nav);
+	dtAssert(m_nodePool);
+	dtAssert(m_openList);
+
+	if (!pathCount)
+		return DT_FAILURE | DT_INVALID_PARAM;
+
+	*pathCount = 0;
+
+	// Validate input
+	if (!m_nav->isValidPolyRef(startRef) || /*!m_nav->isValidPolyRef(endRef) ||*/
+		!startPos || !dtVisfinite(startPos) ||
+		!endPos || !dtVisfinite(endPos) ||
+		!filter || !path || maxPath <= 0)
+	{
+		return DT_FAILURE | DT_INVALID_PARAM;
+	}
+
+
+	m_nodePool->clear();
+	m_openList->clear();
+
+	dtVsub(m_vES, startPos, endPos);
+	//dtVnormalize(m_norm_v1);
+
+	dtNode* startNode = m_nodePool->getNode(startRef, 0, 1);
+	dtVcopy(startNode->pos, startPos);
+	startNode->pidx = 0;
+	startNode->cost = 0;
+	startNode->total = -FLT_MAX;
+	startNode->id = startRef;
+	startNode->flags = DT_NODE_OPEN;
+	m_openList->push(startNode);
+
+	dtNode* lastBestNode = startNode;
+	float lastBestNodeCost = startNode->cost;
+	//float lastBestNodeTotal = startNode->total;
+	float lastBestNodeH = startNode->total - startNode->cost;
+	float baseCost = startNode->total;
+
+	bool outOfNodes = false;
+	const float EPS = 1e-6f;
+	while (!m_openList->empty())
+	{
+		// Remove node from open list and put it in closed list.
+		dtNode* bestNode = m_openList->pop();
+		bestNode->flags &= ~DT_NODE_OPEN;
+		bestNode->flags |= DT_NODE_CLOSED;
+
+		if (bestNode->cost - escapeDist >= EPS)
+		{
+			if (bestNode->total - bestNode->cost - lastBestNodeH > EPS)
+			{
+				lastBestNodeH = bestNode->total - bestNode->cost;
+				lastBestNode = bestNode;
+			}
+			continue;
+		}
+
+		// Get current poly and tile.
+		// The API input has been cheked already, skip checking internal data.
+		const dtPolyRef bestRef = bestNode->id;
+		const dtMeshTile* bestTile = 0;
+		const dtPoly* bestPoly = 0;
+		m_nav->getTileAndPolyByRefUnsafe(bestRef, &bestTile, &bestPoly);
+
+		// Get parent poly and tile.
+		dtPolyRef parentRef = 0;
+		const dtMeshTile* parentTile = 0;
+		const dtPoly* parentPoly = 0;
+		if (bestNode->pidx)
+			parentRef = m_nodePool->getNodeAtIdx(bestNode->pidx)->id;
+		if (parentRef)
+			m_nav->getTileAndPolyByRefUnsafe(parentRef, &parentTile, &parentPoly);
+
+		for (unsigned int i = bestPoly->firstLink; i != DT_NULL_LINK; i = bestTile->links[i].next)
+		{
+			dtPolyRef neighbourRef = bestTile->links[i].ref;
+
+			// Skip invalid ids and do not expand back to where we came from.
+			if (!neighbourRef || neighbourRef == parentRef)
+				continue;
+
+			// Get neighbour poly and tile.
+			// The API input has been cheked already, skip checking internal data.
+			const dtMeshTile* neighbourTile = 0;
+			const dtPoly* neighbourPoly = 0;
+			m_nav->getTileAndPolyByRefUnsafe(neighbourRef, &neighbourTile, &neighbourPoly);
+
+			if (!filter->passFilter(neighbourRef, neighbourTile, neighbourPoly))
+				continue;
+
+			// deal explicitly with crossing tile boundaries
+			unsigned char crossSide = 0;
+			if (bestTile->links[i].side != 0xff)
+				crossSide = bestTile->links[i].side >> 1;
+
+			// get the node
+			dtNode* neighbourNode = m_nodePool->getNode(neighbourRef, crossSide, 1);
+			if (!neighbourNode)
+			{
+				outOfNodes = true;
+				continue;
+			}
+
+			// If the node is visited the first time, calculate node position.
+			if (neighbourNode->flags == 0)
+			{
+				getEdgeMidPoint(bestRef, bestPoly, bestTile,
+					neighbourRef, neighbourPoly, neighbourTile,
+					neighbourNode->pos);
+			}
+
+			// Calculate cost and heuristic.
+			float cost = 0;
+			float heuristic = 0;
+
+			{
+				// Cost
+				const float curCost = filter->getCost(bestNode->pos, neighbourNode->pos,
+														parentRef, parentTile, parentPoly,
+														bestRef, bestTile, bestPoly,
+														neighbourRef, neighbourTile, neighbourPoly);
+
+				cost = bestNode->cost + curCost;
+				heuristic = getEscapeH(startPos, endPos, neighbourNode->pos, bestNode->cost, escapeDist);
+			}
+			const float total = cost + heuristic;
+
+
+			// The node is already in open list and the new result is worse, skip.
+			if ((neighbourNode->flags & DT_NODE_OPEN) &&  total >= neighbourNode->total)
+				continue;
+			// The node is already visited and process, and the new result is worse, skip.
+			if ((neighbourNode->flags & DT_NODE_CLOSED) && total >= neighbourNode->total)
+				continue;
+
+			// Add or update the node.
+			neighbourNode->pidx = m_nodePool->getNodeIdx(bestNode);
+			neighbourNode->id = neighbourRef;
+			neighbourNode->flags = (neighbourNode->flags & ~DT_NODE_CLOSED);
+			neighbourNode->cost = cost;
+			neighbourNode->total = total;
+
+			if (neighbourNode->flags & DT_NODE_OPEN)
+			{
+				// Already in open, update node location.
+				m_openList->modify(neighbourNode);
+			}
+			else
+			{
+				// Put the node in open list.
+				neighbourNode->flags |= DT_NODE_OPEN;
+				m_openList->push(neighbourNode);
+			}
+
+			//if (heuristic - lastBestNodeH > EPS && neighbourNode->cost - escapeDist >= EPS)
+			//{
+			//	lastBestNodeH = heuristic;
+			//	lastBestNode = neighbourNode;
+			//}
+		}
+	}
+
+	dtVcopy(epos, lastBestNode->pos);
+	dtStatus status = getPathToNode(lastBestNode, path, pathCount, maxPath);
+
+	if (outOfNodes)
+		status |= DT_OUT_OF_NODES;
+
+	return status;
+
+}
+//@ND END
 
 /// @par
 ///
@@ -2514,6 +2727,13 @@ dtStatus dtNavMeshQuery::raycast(dtPolyRef startRef, const float* startPos, cons
 	{
 		// Cast ray against current polygon.
 		
+		// 2024-02-06 zlonglin: check valid data
+		if (!poly || poly->vertCount > DT_VERTS_PER_POLYGON)
+		{
+			hit->pathCount = n;
+			return DT_FAILURE;
+		}
+
 		// Collect vertices.
 		int nv = 0;
 		for (int i = 0; i < (int)poly->vertCount; ++i)

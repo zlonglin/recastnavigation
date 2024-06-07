@@ -20,6 +20,7 @@
 #define DETOURNODE_H
 
 #include "DetourNavMesh.h"
+#include <math.h>
 
 enum dtNodeFlags
 {
@@ -42,6 +43,25 @@ struct dtNode
 	unsigned int state : DT_NODE_STATE_BITS;	///< extra state information. A polyRef can have multiple nodes with different extra info. see DT_MAX_STATES_PER_NODE
 	unsigned int flags : 3;						///< Node flags. A combination of dtNodeFlags.
 	dtPolyRef id;								///< Polygon ref the node corresponds to.
+
+	unsigned char dir = 0;
+//@ND BEGIN
+	bool operator > (const dtNode& node) {
+		if (0 == dir)
+			return total > node.total;
+		// 逃逸路径寻路最佳节点判断：优先选择逃离方向；优先选择经过路径较短的；逃逸方向夹角较小的
+		float h1 = total - cost;
+		float h2 = node.total - node.cost;
+		if (h1 < 0 && h2 > 0)
+			return true;
+		else if (h1 > 0 && h2 < 0)
+			return false;
+		else if (cost > node.cost)
+			return true;
+		else
+			return h1 > h2;
+	}
+//@ND END
 };
 
 static const int DT_MAX_STATES_PER_NODE = 1 << DT_NODE_STATE_BITS;	// number of extra states per node. See dtNode::state
@@ -55,7 +75,7 @@ public:
 
 	// Get a dtNode by ref and extra state information. If there is none then - allocate
 	// There can be more than one node for the same polyRef but with different extra state information
-	dtNode* getNode(dtPolyRef id, unsigned char state=0);	
+	dtNode* getNode(dtPolyRef id, unsigned char state=0, unsigned char dir = 0);	
 	dtNode* findNode(dtPolyRef id, unsigned char state);
 	unsigned int findNodes(dtPolyRef id, dtNode** nodes, const int maxNodes);
 

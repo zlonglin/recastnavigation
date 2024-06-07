@@ -173,6 +173,8 @@ public:
 	///  @param[in]		maxNodes	Maximum number of search nodes. [Limits: 0 < value <= 65535]
 	/// @returns The status flags for the query.
 	dtStatus init(const dtNavMesh* nav, const int maxNodes);
+
+	dtStatus changeNavMesh(const dtNavMesh* nav);
 	
 	/// @name Standard Pathfinding Functions
 	/// @{
@@ -191,6 +193,16 @@ public:
 					  const float* startPos, const float* endPos,
 					  const dtQueryFilter* filter,
 					  dtPolyRef* path, int* pathCount, const int maxPath) const;
+
+//@ND BEGIN
+	/// 逃逸路径寻路
+	/// @param[in]		escapeDist	逃逸路径长度
+	/// @param[out]		epos		逃逸路径终点坐标
+	dtStatus findPathEscape(dtPolyRef startRef, /*dtPolyRef endRef,*/
+		const float* startPos, const float* endPos, const float escapeDist,
+		const dtQueryFilter* filter,
+		dtPolyRef* path, int* pathCount, float* epos, const int maxPath);
+//@ND END
 
 	/// Finds the straight path from the start to the end position within the polygon corridor.
 	///  @param[in]		startPos			Path start position. [(x, y, z)]
@@ -575,6 +587,14 @@ private:
 	class dtNodePool* m_tinyNodePool;	///< Pointer to small node pool.
 	class dtNodePool* m_nodePool;		///< Pointer to node pool.
 	class dtNodeQueue* m_openList;		///< Pointer to open list queue.
+
+//@ND BEGIN
+	float m_vES[3];						///< 逃逸路径目标点->起点向量
+	// 逃逸路径启发函数
+	inline float getEscapeV(const float* startPos, const float* endPos, const float* curPos);
+	inline float getEscapeH(const float* startPos, const float* endPos, const float* curPos, float cost, float escapeDist);
+
+//@ND END
 };
 
 /// Allocates a query object using the Detour allocator.
